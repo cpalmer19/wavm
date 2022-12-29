@@ -1,5 +1,11 @@
+#![allow(dead_code)]
+
 use crate::value::*;
 use crate::bytecode;
+
+pub fn load(bytecode: &[u8]) -> Result<WasmModule, WasmLoadError> {
+    WasmModuleLoader::new(bytecode).load()
+}
 
 #[derive(Debug, Default)]
 pub struct WasmModule {
@@ -10,32 +16,43 @@ pub struct WasmModule {
     pub code_section: Vec<u8>
 }
 
+pub struct WasmLoadError {
+    byte: usize,
+    msg: String,
+}
+
+impl WasmLoadError {
+    pub fn formatted(&self) -> String {
+        format!("Error at byte {:#04x}: {}", self.byte-1, self.msg)
+    }
+}
+
 const WASM_BINARY_MAGIC: u32 = 0x0061_736d;
 
-pub struct WasmModuleDecoder<'a> {
+struct WasmModuleLoader<'a> {
     bytecode: &'a [u8],
     byte: usize,
     module: WasmModule,
-    had_error: bool,
+    error: Option<WasmLoadError>,
 }
 
-impl<'a> WasmModuleDecoder<'a> {
-    pub fn new(bytecode: &'a [u8]) -> Self {
+impl<'a> WasmModuleLoader<'a> {
+    fn new(bytecode: &'a [u8]) -> Self {
         Self {
             bytecode,
             byte: 0,
             module: WasmModule::default(),
-            had_error: false,
+            error: None,
         }
     }
 
-    pub fn decode(mut self) -> Option<WasmModule> {
+    fn load(mut self) -> Result<WasmModule, WasmLoadError> {
         match self.preliminary() {
             Ok(version) => self.module.version = version,
             Err(msg) => self.error(&msg),
         }
 
-        while !self.had_error && self.byte < self.bytecode.len() {
+        while self.error.is_none() && self.byte < self.bytecode.len() {
             match self.read_byte() {
                 0x00 => self.custom(),
                 0x01 => self.types(),
@@ -53,10 +70,9 @@ impl<'a> WasmModuleDecoder<'a> {
             }
         }
 
-        if self.had_error {
-            None
-        } else {
-            Some(self.module)
+        match self.error {
+            None => Ok(self.module),
+            Some(err) => Err(err),
         }
     }
 
@@ -219,7 +235,9 @@ impl<'a> WasmModuleDecoder<'a> {
     }
 
     fn error(&mut self, msg: &str) {
-        eprintln!("Error at byte {:#04x}: {}", self.byte-1, msg);
-        self.had_error = true;
+        self.error = Some(WasmLoadError {
+            byte: self.byte - 1,
+            msg: msg.to_string(),
+        });
     }
 }

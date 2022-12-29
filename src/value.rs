@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+#[derive(Debug)]
 pub enum Value {
     I32(i32),
     I64(i64),
@@ -9,6 +10,7 @@ pub enum Value {
     RefNull(RefType),
 }
 
+#[derive(Debug)]
 pub enum RefType {
     FuncRef,
     ExternRef,
